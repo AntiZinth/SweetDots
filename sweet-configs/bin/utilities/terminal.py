@@ -1,146 +1,113 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
+
+import os
+import pathlib
+import sys
 
 from argparse import ArgumentParser
-from os import environ, path
-from pathlib import Path
 from subprocess import run
-from sys import path as spath
 
-current_dir = Path(__file__).resolve().parent
-spath.insert(1, f"{current_dir}/../system")
-from utils import config, path_expander  # type: ignore
+sys.path.insert(1, f'{pathlib.Path(__file__).resolve().parent}/../system')
+from utils import config, path_expander
+
+
+def launch(action: str, session: str = '') -> None:    
+    if session == 'tty':
+        session = 'x11'
+
+    foot_conf: str = path_expander(config.terminal.foot_config_file)
+    alac_conf: str = path_expander(config.terminal.alacritty_config_file)
+
+
+
+    command: dict = {
+        'float': {
+            'wayland': ['foot', '--app-id=foot_floating', f'--config={foot_conf}'],
+            'x11': ['alacritty', '--class', 'alacritty_floating', '--config-file', alac_conf]
+        },
+        'full': {
+            'wayland': ['foot', '--fullscreen', '--app-id=foot_fullscreen', f'--config={foot_conf}'],
+            'x11': ['alacritty', '--class', 'alacritty_fullscreen', '--config-file', alac_conf]
+        },
+        'area': {
+            'wayland': ['foot', '--app-id=foot_area', f'--config={foot_conf}'],
+            'x11': ['alacritty', '--class', 'alacritty_floating', '--config-file', alac_conf]
+        },
+        'normal': {
+            'wayland': ['foot', f'--config={foot_conf}'],
+            'x11': ['alacritty', '--config-file', alac_conf]
+        }
+    }
+
+    if action == 'area' and session == 'wayland':
+        area = run(
+            ['slurp', '-b', '1B1F23AA', '-c', 'FFDEDEFF', '-s', '00000000', '-w', '2', '-f', '%wx%h'],
+            check=True,
+            text=True,
+            capture_output=True,
+        ).stdout
+
+        command[action][session] += f'--window-size-pixels={area.rstrip()}'
+
+    run(command[action][session])
 
 
 def arguments():
-    parser = ArgumentParser(description="a simple terminal script")
+    parser = ArgumentParser(description='a simple terminal script')
+
     parser.add_argument(
-        "-f",
-        "--float",
-        action="store_true",
-        help="launch the terminal in floating mode",
+        '-f',
+        '--float',
+        action='store_true',
+        help='launch the terminal in floating mode',
     )
+
     parser.add_argument(
-        "-F",
-        "--full",
-        action="store_true",
-        help="launch the terminal in fullscreen mode",
+        '-F',
+        '--full',
+        action='store_true',
+        help='launch the terminal in fullscreen mode',
     )
+
     parser.add_argument(
-        "-a",
-        "--area",
-        action="store_true",
-        help="launch the terminal in a specified area",
+        '-a',
+        '--area',
+        action='store_true',
+        help='launch the terminal in a specified area',
     )
+
     parser.add_argument(
-        "-x",
-        "--alacritty",
-        action="store_true",
-        help="will use alacritty instead of foot",
+        '-x',
+        '--alacritty',
+        action='store_true',
+        help='will force to use alacritty in wayland'
     )
+
     return parser.parse_args()
-
-
-def launch(do: str, forced: int = False):
-    session = environ["XDG_SESSION_TYPE"]
-    conf_foot, conf_ala = (
-        path_expander(config.terminal.foot_config_file),
-        path_expander(config.terminal.alacritty_config_file),
-    )
-
-    match do:
-        case "float":
-            if session == "wayland" and forced is False:
-                run(["foot", "--app-id=foot_floating", f"--config={conf_foot}"])
-            elif session == "x11" or forced is True:
-                run(
-                    "--config-file",
-                        conf_ala,
-                          [
-                        "alacritty",
-                        "--class",
-                        "alacritty_floating",
-                  ]
-                )
-        case "full":
-            if session == "wayland" and forced is False:
-                run(
-                    [
-                        "foot",
-                        "--fullscreen",
-                        "--app-id=foot_fullscreen",
-                        f"--config={conf_foot}",
-                    ]
-                )
-            elif session == "x11" or forced is True:
-                run(
-                    [
-                        "alacritty",
-                        "--class",
-                        "alacritty_fullscreen",
-                        "--config-file",
-                        conf_ala,
-                    ]
-                )
-        case "area":
-            if session == "wayland" and forced is False:
-                area = run(
-                    [
-                        "slurp",
-                        "-b",
-                        "1B1F23AA",
-                        "-c",
-                        "FFDEDEFF",
-                        "-s",
-                        "00000000",
-                        "-w",
-                        "2",
-                        "-f",
-                        "%wx%h",
-                    ],
-                    check=True,
-                    text=True,
-                    capture_output=True,
-                ).stdout
-                run(
-                    [
-                        "foot",
-                        "--app-id=foot_floating",
-                        f"--config={conf_foot}",
-                        f"--window-size-pixels={area.rstrip()}",
-                    ]
-                )
-            elif session == "x11" or forced is True:
-                run(["alacritty", "--class", "--config-file", conf_ala])
-        case _:
-            if session == "wayland" and forced is False:
-                run(["foot", f"--config={conf_foot}"])
-            elif session == "x11" or forced is True:
-                run(["alacritty", "--config-file", conf_ala])
 
 
 def main():
     args = arguments()
+    forced: bool = config.terminal.force_use_alacritty
+    session: str = os.environ['XDG_SESSION_TYPE']
 
     if args.float:
-        if args.alacritty:
-            launch("float", forced=True)
-        else:
-            launch("float")
+        action: str = 'float'
+    
     elif args.full:
-        if args.alacritty:
-            launch("full", forced=True)
-        else:
-            launch("full")
+        action: str = 'full'
+    
     elif args.area:
-        if args.alacritty:
-            launch("area", forced=True)
-        else:
-            launch("area")
-    elif args.alacritty:
-        launch("normal", forced=True)
+        action: str = 'area'
+    
     else:
-        launch("normal")
+        action: str = 'normal'
+ 
+    if args.alacritty is True and forced is False:
+        session = 'x11'
+
+    launch(action, session)
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
